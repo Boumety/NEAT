@@ -571,7 +571,7 @@ function nouvelleGeneration(laPopulation, lesEspeces)
 end
  
 -- mets à jour un réseau de neurone avec ce qu'il y a a l'écran. A appeler à chaque frame quand on en test un reseau
-function majReseau(unReseau, marioBase)
+function majReseau(unReseau)
     -- WORK HERE
 	lesInputs = getLesInputs()
 	for i = 1, NB_INPUT, 1 do
@@ -611,7 +611,7 @@ end
 		-- ça va permettre de suivre si pendant cette frame il y a du l'evolution
 		local fitnessAvant = laPopulation[idPopulation].fitness
  
-		majReseau(laPopulation[idPopulation], marioBase)
+		majReseau(laPopulation[idPopulation])
 		feedForward(laPopulation[idPopulation])
 		appliquerLesBoutons(laPopulation[idPopulation])
  
