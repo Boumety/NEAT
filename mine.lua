@@ -9,7 +9,9 @@ local CHANCE_MUTATION_CONNECTION = 0.85
 local CHANCE_MUTATION_NEURON = 0.25
 local END_FITNESS = 1000000
 
-local NB_NEURON_MAX = 9999
+local NB_FRAME_RESET_BASE = 66
+local NB_FRAME_RESET_PROGRESS = 600
+local NB_NEURON_MAX = 99999999
 local NB_INDIVIDUAL_POPULATION = 100
 local NB_INPUT = 8
 local NB_OUTPUT = 8
@@ -25,7 +27,8 @@ fitnessMax = 0
 generationNb = 1
 populationId = 1
 frameNb = 0
-fitnessStart = 0
+frameNbStop = 0
+fitnessInit = 0
 
 oldPopulations = {}
 species = {}
@@ -36,14 +39,13 @@ function copy(orig)
     for orig_key, orig_value in next, orig, nil do
         copy[copier(orig_key)] = copier(orig_value)
     end
-    setmetatable(copy, copier(getmetatable(orig)))
     return copy
 end
 
-function newNeuron(network, id, type, bias)
+function newNeuron(network, id, type, value)
     local neuron = {}
     
-    neuron.bias = bias
+    neuron.value = bias
     neuron.id = id
     neuron.type = type
 
@@ -352,6 +354,11 @@ function getScore(networkTest, networkRep)
     WEIGHTDIFF_COEF * getDiffWeight(networkTest, networkRep)
 end
 
+function sigmoid(c)
+	local result = x / (1 + math.abs(x))
+	return result >= 0.5
+end
+
 function generateWeight()
 	local var = {-1, 1}
 	return var[math.random(2)]
@@ -429,37 +436,93 @@ function chooseParent(spe)
 	end
 end
 
-population = newPopulation()
-
-mutate(population[1])
-
-for i = 2, #population do
-    population[i] = copy(population[1])
-    mutate(population[i])
+function updateNetwork(network, inputs)
+	-- Fitness
+	for i = 1, NB_INPUT do
+		network.neurons[i].value = inputs[i]
+	end
 end
 
-species = sortPopulation(population)
-population = newGeneration(population, species)
+function feedForward(network)
+	for i = 1, #network.connections do
+		if network.connections[i].enabled then
+			network.neurons[network.connections[i].neuron_out].value = 0
+		end
+	end
 
-while true do:
+	for i = 1, #network.connections do
+		if network.connections[i].enabled then
+			network.neurons[network.connections[i].neuron_out].value = network.neurons[network.connections[i].neuron_in].value * network.connections[i].weight + network.neurons[network.connections[i].neuron_out].value
+		end
+	end		
+end
+
+function applyOutputs(network, outputs)
+	local out = {}
+	for i = 1, NB_OUTPUT do
+		out[i] = sigmoid(network.neurons[NB_INPUT + i].value)
+	end
+
+	for i = 1, #out do
+		if out[i] then
+			outputs[i]()
+		end
+	end
+end
+
+function Client.OnStart()
+	population = newPopulation()
+
+	mutate(population[1])
+
+	for i = 2, #population do
+		population[i] = copy(population[1])
+		mutate(population[i])
+	end
+
+	species = sortPopulation(population)
+	population = newGeneration(population, species)
+end
+
+finished = false
+function Client.Tick()
+	if finished then return end
     local old = population[populationId].fitness
 
-    updateNetwork(population[populationId])
+    updateNetwork(population[populationId], `inputs`)
     feedForward(population[populationId])
-    applyOutputs(population[populationId])
+    applyOutputs(population[populationId], `outputs`)
 
+	if frameNb == 0 then
+		fitnessInit = population[populationId].fitness
+	end
 
+	frameNb = frameNb + 1
 
+	fitnessMax = (fitnessMax < population[populationId].fitness) and population[populationId].fitness or fitnessMax
 
+	if old == population[populationId].fitness then
+		frameNbStop = frameNbStop + 1
+		local nbFrameReset = NB_FRAME_RESET_BASE
+		
+		if fitnessInit ~= population[populationId].fitness then
+			nbFrameReset = NB_FRAME_RESET_PROGRESS
+		end
 
-
-
-
-
-
-
-
-
-
-
-
+		if frameNbStop > nbFrameReset then
+			frameNbStop = 0
+			-- restart()
+			populationId = populationId + 1
+			if populationId > #population then
+				populationId = 1
+				generationNb = generationNb + 1
+				species = sortPopulation(population)
+				population = newGeneration(population, species)
+				frameNb = 0
+				fitnessInit = 0
+			end
+		end
+	else
+		frameNbStop = 0
+	end
+end
